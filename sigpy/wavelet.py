@@ -83,9 +83,9 @@ def fwt(input, wave_name='db4', axes=None, level=None):
                 hi = xp.reshape(xp.fft.fftn(hi, axes=(0,)), \
                         [hi.size if k == s else 1 for s in range(len(x.shape))])
                 f = f * hi
-        y = xp.fft.ifftn(X * f)
+        y = xp.fft.ifftn(X * f, axes=axes)
         for ax in axes:
-            y = xp.take(y, [t * 2 for t in range(y.shape[ax]//2)], axis=ax)
+            y = xp.take(y, [t * 2 for t in range(0, y.shape[ax]//2)], axis=ax)
         f.fill(1)
         wav[key] = y
 
