@@ -57,7 +57,8 @@ def fwt(input, wave_name='db4', axes=None, level=None):
     #   First dimension is low pass filtered.
     #   Second dimension has no modification.
     #   Third dimension is high pass filtered.
-    keys = ['']
+    # Numbers represent level of deomposition.
+    keys = ['%d' % level]
     for ax in range(len(x.shape)):
         if ax not in axes:
             keys = [elm + 'X' for elm in keys]
@@ -67,7 +68,7 @@ def fwt(input, wave_name='db4', axes=None, level=None):
     wav = {}
     f = xp.ones(x.shape).astype(xp.complex)
     for key in keys:
-        subkeys = list(key)
+        subkeys = list(key)[1:]
         for k in range(len(subkeys)):
             subkey = subkeys[k]
             if subkey == 'L':
@@ -87,6 +88,13 @@ def fwt(input, wave_name='db4', axes=None, level=None):
             y = xp.take(y, [t * 2 for t in range(y.shape[ax]//2)], axis=ax)
         f.fill(1)
         wav[key] = y
+
+    if (level > 1):
+        approx_key = [elm for elm in wav.keys() if 'H' not in elm].pop()
+        approx_val = wav[approx_key]
+        next_level = fwt(wav[approx_key], wave_name=wave_name, axes=axes, level=level-1)
+        wav.update(next_level)
+        wav.pop(approx_key)
 
     return wav
 
