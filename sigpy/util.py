@@ -9,8 +9,7 @@ from sigpy import backend, config
 
 __all__ = ['prod', 'vec', 'split', 'rss', 'resize',
            'flip', 'circshift', 'downsample', 'upsample', 'dirac', 'randn',
-           'triang', 'hanning', 'monte_carlo_sure', 'axpy', 'xpay',
-           'ShuffledNumbers']
+           'triang', 'hanning', 'monte_carlo_sure', 'axpy', 'xpay', 'leja']
 
 
 def _normalize_axes(axes, ndim):
@@ -391,34 +390,63 @@ def monte_carlo_sure(f, y, sigma, eps=1e-10):
     return sure
 
 
-class ShuffledNumbers(object):
-    """Produces shuffled numbers between given range.
+def leja(x):
+    """ Perform leja ordering of roots of a polynomial.
+
+    Orders roots in a way suitable to accurately compute polynomial
+    coefficients.
 
     Args:
-        Arguments to numpy.arange.
+        x (array): roots to be ordered.
 
+    Returns:
+        array: ordered roots.
+
+    References:
+        Lang, M. and B. Frenzel. 1993.
+        A New and Efficient Program for Finding All Polynomial Roots. Rice
+        University ECE Technical Report, no. TR93-08, 1993.
     """
 
-    def __init__(self, *args):
-        self.numbers = np.arange(*args)
-        np.random.shuffle(self.numbers)
-        self.i = 0
+    n = np.size(x)
+    # duplicate roots to n+1 rows
+    a = np.tile(np.reshape(x, (1, n)), (n+1, 1))
+    # take abs of first row
+    a[0, :] = np.abs(a[0, :])
 
-    def __iter__(self):
-        return self
+    tmp = np.zeros(n+1, dtype=complex)
 
-    def __next__(self):
-        return self.next()
+    # find index of max abs value
+    ind = np.argmax(a[0, :])
+    if ind != 0:
+        tmp[:] = a[:, 0]
+        a[:, 0] = a[:, ind]
+        a[:, ind] = tmp
 
-    def next(self):
-        ret = self.numbers[self.i]
+    x_out = np.zeros(n, dtype=complex)
+    x_out[0] = a[n-1, 0]  # first entry of last row
+    a[1, 1:] = np.abs(a[1, 1:] - x_out[0])
 
-        self.i += 1
-        if self.i == len(self.numbers):
-            np.random.shuffle(self.numbers)
-            self.i = 0
+    foo = a[0, 0:n]
 
-        return ret
+    for l in range(1, n-1):
+        foo = np.multiply(foo, a[l, :])
+        ind = np.argmax(foo[l:])
+        ind = ind + l
+        if l != ind:
+            tmp[:] = a[:, l]
+            a[:, l] = a[:, ind]
+            a[:, ind] = tmp
+            # also swap inds in foo
+            tmp[0] = foo[l]
+            foo[l] = foo[ind]
+            foo[ind] = tmp[0]
+        x_out[l] = a[n-1, l]
+        a[l+1, (l+1):n] = np.abs(a[l+1, (l+1):] - x_out[l])
+
+    x_out = a[n, :]
+
+    return x_out
 
 
 def axpy(y, a, x):
