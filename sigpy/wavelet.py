@@ -28,8 +28,11 @@ def fwt(input, wave_name='db4', axes=None, level=None):
         wave_name (str): Wavelet name.
         level (None or int): Number of wavelet levels.
     """
+
+    print("In dev branch\n");
     device = backend.get_device(input)
     xp = device.xp
+
     wavdct = pywt.Wavelet(wave_name)
     dec_hi = xp.array(wavdct.dec_hi)
     dec_lo = xp.array(wavdct.dec_lo)
@@ -40,24 +43,21 @@ def fwt(input, wave_name='db4', axes=None, level=None):
         level = pywt.dwt_max_level(xp.min([input.shape[ax] for ax in axes]), dec_hi.size)
     assert(level > 0)
 
-    # Linear convolution
-    #pad_array = [(0, dec_hi.size - 1 + (input.shape[k] + dec_hi.size - 1) % 2) if k in axes else (0, 0) \
-    #                for k in range(len(input.shape))]
-    # Circular convolution
-    pad_array = [(0, input.shape[k] % 2) if k in axes else (0, 0) \
-                    for k in range(len(input.shape))]
+    # Zero padding.
+    pad_array = [(0, dec_hi.size - 1 + (input.shape[k] + dec_hi.size - 1) % 2) if k in axes else (0, 0) \
+                 for k in range(len(input.shape))]
     x = xp.pad(input, pad_array, 'constant', constant_values=(0, 0))
     X = xp.fft.fftn(x, axes=axes)
 
     # Dictionary naming convention:
-    #   L: Low pass.
-    #   H: High pass.
+    #   L: Low pass filter decomposition.
+    #   H: High pass filter decomposition.
     #   X: No filter applies.
     # For example, LXH implies:
     #   First dimension is low pass filtered.
-    #   Second dimension has no modification.
+    #   Second dimension is not modified.
     #   Third dimension is high pass filtered.
-    # Numbers represent level of deomposition.
+    # Numbers represent level of decomposition.
     keys = ['%d' % level]
     for ax in range(len(x.shape)):
         if ax not in axes:
