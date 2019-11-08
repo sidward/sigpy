@@ -5,8 +5,6 @@ import numpy as np
 import pywt
 from sigpy import backend, util
 
-import matplotlib.pyplot as plt
-
 __all__ = ['fwt', 'iwt']
 
 
@@ -135,15 +133,18 @@ def iwt(input, oshape, wave_name='db4'):
         if k in axes:
             sampleidx = sampleidx + [slice(0, None, 2)];
         else:
-            sampleidx = sampleidx + [slice(None)];
+            sampleidx = sampleidx + [slice(0, None)];
     sampleidx = tuple(sampleidx);
 
     cropidx = []
     for k in range(len(oshape)):
-        cropidx = cropidx + [slice(0, oshape[k])];
+        if k in axes:
+            cropidx = cropidx + [slice(rec_hi.size - 1, oshape[k] + rec_hi.size - 1)];
+        else:
+            cropidx = cropidx + [slice(0, None)];
     cropidx = tuple(cropidx);
 
-    pad_shape = [(oshape[k] + rec_hi.size - 1 + (oshape[k] + rec_hi.size - 1) % 2) if k in axes else (0, 0) \
+    pad_shape = [(oshape[k] + rec_hi.size - 1 + (oshape[k] + rec_hi.size - 1) % 2) if k in axes else oshape[k] \
                     for k in range(len(oshape))]
     
     approxdct = {}
@@ -154,9 +155,8 @@ def iwt(input, oshape, wave_name='db4'):
     if approxdct != {}:
         approxkey = [elm for elm in approxdct.keys() if 'H' not in elm].pop()
         approxkey = "%04d%s" % (max_level, approxkey[4:])
-        ashape = [elm//2 for elm in pad_shape]
-        approx = iwt(approxdct, ashape, wave_name=wave_name);
-        input[approxkey] = xp.roll(approx, [1 - (rec_hi.size) for k in axes], axis=tuple(axes))
+        ashape = [pad_shape[k]//2 if k in axes else oshape[k] for k in range(len(oshape))]
+        input[approxkey] = iwt(approxdct, ashape, wave_name=wave_name)
 
     res = xp.zeros(oshape)
     X   = xp.zeros(pad_shape).astype(xp.complex64)
@@ -183,6 +183,5 @@ def iwt(input, oshape, wave_name='db4'):
         X.fill(0)
         f.fill(1)
         res = res + y[cropidx]
-
 
     return res
