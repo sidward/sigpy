@@ -110,7 +110,7 @@ def iwt(input, oshape, wave_name='db4'):
         axes (None or tuple of int): Axes to perform wavelet transform.
         level (None or int): Number of wavelet levels.
     """
-    device = backend.get_device(input)
+    device = backend.get_device(input[list(input.keys())[0]])
     xp = device.xp
 
     wavdct = pywt.Wavelet(wave_name)
