@@ -5,6 +5,8 @@ import numpy as np
 import pywt
 from sigpy import backend, util
 
+import matplotlib.pyplot as plt
+
 __all__ = ['fwt', 'iwt']
 
 
@@ -24,12 +26,10 @@ def fwt(input, wave_name='db4', axes=None, level=None):
 
     Args:
         input (array): Input array.
-        axes (None or tuple of int): Axes to perform wavelet transform.
         wave_name (str): Wavelet name.
+        axes (None or tuple of int): Axes to perform wavelet transform.
         level (None or int): Number of wavelet levels.
     """
-
-    print("In dev branch\n");
     device = backend.get_device(input)
     xp = device.xp
 
@@ -45,20 +45,23 @@ def fwt(input, wave_name='db4', axes=None, level=None):
 
     # Zero padding.
     pad_array = [(0, dec_hi.size - 1 + (input.shape[k] + dec_hi.size - 1) % 2) if k in axes else (0, 0) \
-                 for k in range(len(input.shape))]
+                    for k in range(len(input.shape))]
     x = xp.pad(input, pad_array, 'constant', constant_values=(0, 0))
     X = xp.fft.fftn(x, axes=axes)
 
-    # Dictionary naming convention:
+    # Dictionary convention:
     #   L: Low pass filter decomposition.
     #   H: High pass filter decomposition.
     #   X: No filter applies.
+    #
     # For example, LXH implies:
     #   First dimension is low pass filtered.
     #   Second dimension is not modified.
     #   Third dimension is high pass filtered.
+    #
     # Numbers represent level of decomposition.
-    keys = ['%d' % level]
+
+    keys = ['%04d' % level]
     for ax in range(len(x.shape)):
         if ax not in axes:
             keys = [elm + 'X' for elm in keys]
@@ -68,7 +71,7 @@ def fwt(input, wave_name='db4', axes=None, level=None):
     wav = {}
     f = xp.ones(x.shape).astype(xp.complex)
     for key in keys:
-        subkeys = list(key)[1:]
+        subkeys = list(key)[4:]
         for k in range(len(subkeys)):
             subkey = subkeys[k]
             if subkey == 'L':
@@ -99,23 +102,87 @@ def fwt(input, wave_name='db4', axes=None, level=None):
     return wav
 
 
-def iwt(input, oshape, coeff_slices, wave_name='db4', axes=None, level=None):
+def iwt(input, oshape, wave_name='db4'):
     """Inverse wavelet transform.
 
     Args:
         input (array): Input array.
         oshape (tuple of ints): Output shape.
-        coeff_slices (list of slice): Slices to split coefficients.
-        axes (None or tuple of int): Axes to perform wavelet transform.
         wave_name (str): Wavelet name.
+        axes (None or tuple of int): Axes to perform wavelet transform.
         level (None or int): Number of wavelet levels.
     """
     device = backend.get_device(input)
-    input = backend.to_device(input, backend.cpu_device)
+    xp = device.xp
 
-    input = pywt.array_to_coeffs(input, coeff_slices, output_format='wavedecn')
-    output = pywt.waverecn(input, wave_name, mode='zero', axes=axes)
-    output = util.resize(output, oshape)
+    wavdct = pywt.Wavelet(wave_name)
+    rec_hi = xp.array(wavdct.rec_hi)
+    rec_lo = xp.array(wavdct.rec_lo)
 
-    output = backend.to_device(output, device)
-    return output
+    max_level = 0;
+    for key in input.keys():
+        max_level = max(int(key[:4]), max_level)
+
+    axes = []
+    counter = 0
+    for elm in list(input.keys())[0][4:]:
+        if elm == 'H' or elm == 'L':
+            axes = axes + [counter]
+        counter = counter + 1
+
+    sampleidx = []
+    for k in range(len(oshape)):
+        if k in axes:
+            sampleidx = sampleidx + [slice(0, None, 2)];
+        else:
+            sampleidx = sampleidx + [slice(None)];
+    sampleidx = tuple(sampleidx);
+
+    cropidx = []
+    for k in range(len(oshape)):
+        cropidx = cropidx + [slice(0, oshape[k])];
+    cropidx = tuple(cropidx);
+
+    pad_shape = [(oshape[k] + rec_hi.size - 1 + (oshape[k] + rec_hi.size - 1) % 2) if k in axes else (0, 0) \
+                    for k in range(len(oshape))]
+    
+    approxdct = {}
+    for key in list(input.keys()):
+        if (int(key[:4]) < max_level):
+            approxdct[key] = input.pop(key)
+
+    if approxdct != {}:
+        approxkey = [elm for elm in approxdct.keys() if 'H' not in elm].pop()
+        approxkey = "%04d%s" % (max_level, approxkey[4:])
+        ashape = [elm//2 for elm in pad_shape]
+        approx = iwt(approxdct, ashape, wave_name=wave_name);
+        input[approxkey] = xp.roll(approx, [1 - (rec_hi.size) for k in axes], axis=tuple(axes))
+
+    res = xp.zeros(oshape)
+    X   = xp.zeros(pad_shape).astype(xp.complex64)
+    f   = xp.ones(pad_shape).astype(xp.complex64)
+    for key in input.keys():
+        X[sampleidx] = input[key];
+        X = xp.fft.fftn(X, axes=axes)
+        subkeys = list(key)[4:]
+        for k in range(len(subkeys)):
+            subkey = subkeys[k]
+            if subkey == 'L':
+                lo = xp.zeros((X.shape[k],)).astype(xp.complex64)
+                lo[:rec_lo.size] = rec_lo
+                lo = xp.reshape(xp.fft.fftn(lo, axes=(0,)), \
+                        [lo.size if k == s else 1 for s in range(len(oshape))])
+                f = f * lo
+            elif subkey == 'H':
+                hi = xp.zeros((X.shape[k],)).astype(xp.complex64)
+                hi[:rec_hi.size] = rec_hi
+                hi = xp.reshape(xp.fft.fftn(hi, axes=(0,)), \
+                        [hi.size if k == s else 1 for s in range(len(oshape))])
+                f = f * hi
+        y = xp.fft.ifftn(X * f, axes=axes)
+        X.fill(0)
+        f.fill(1)
+        res = res + y[cropidx]
+
+
+    return res
