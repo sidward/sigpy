@@ -12,7 +12,7 @@ def get_wavelet_shape(shape, wave_name, axes, level):
     zshape = [((i + 1) // 2) * 2 for i in shape]
 
     tmp = pywt.wavedecn(
-        np.zeros(zshape), wave_name, mode='zero', axes=axes, level=level)
+        np.zeros(zshape), wave_name, mode='periodic', axes=axes, level=level)
     tmp, coeff_slices = pywt.coeffs_to_array(tmp, axes=axes)
     oshape = tmp.shape
 
@@ -35,7 +35,7 @@ def fwt(input, wave_name='db4', axes=None, level=None):
     zinput = util.resize(input, zshape)
 
     coeffs = pywt.wavedecn(
-        zinput, wave_name, mode='zero', axes=axes, level=level)
+        zinput, wave_name, mode='periodic', axes=axes, level=level)
     output, _ = pywt.coeffs_to_array(coeffs, axes=axes)
 
     output = backend.to_device(output, device)
@@ -57,7 +57,7 @@ def iwt(input, oshape, coeff_slices, wave_name='db4', axes=None, level=None):
     input = backend.to_device(input, backend.cpu_device)
 
     input = pywt.array_to_coeffs(input, coeff_slices, output_format='wavedecn')
-    output = pywt.waverecn(input, wave_name, mode='zero', axes=axes)
+    output = pywt.waverecn(input, wave_name, mode='periodic', axes=axes)
     output = util.resize(output, oshape)
 
     output = backend.to_device(output, device)
